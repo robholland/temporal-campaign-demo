@@ -1,6 +1,7 @@
 # Setup
 
 In `ui/`: `npm install`
+
 In `worker/`: `npm install`
 
 # Run

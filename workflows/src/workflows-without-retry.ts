@@ -4,7 +4,7 @@ import type { NewsletterInput } from './lib/types';
 
 const { sendEmail } = proxyActivities<typeof activities>({
   startToCloseTimeout: '2 seconds',
-  retry: { initialInterval: '5 seconds', backoffCoefficient: 1 },
+  retry: { maximumAttempts: 1 },
 });
 
 // This is actually 1 second, for demo purposes

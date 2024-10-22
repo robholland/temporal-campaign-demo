@@ -1,13 +1,17 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { io, Socket } from 'socket.io-client';
-	import { Navbar, NavBrand, NavLi, NavUl, NavHamburger, Dropdown, Spinner, Alert, DropdownDivider, Radio } from 'flowbite-svelte';
+	import { Navbar, NavBrand, NavLi, NavUl, NavHamburger, Dropdown, Spinner, Button, DropdownDivider, Radio } from 'flowbite-svelte';
 	import { Toggle } from 'flowbite-svelte';
 	import { Timeline, TimelineItem } from 'flowbite-svelte';
   import { EnvelopeOpenSolid, ChevronDownOutline, ExclamationCircleSolid, EnvelopeSolid, UserCircleSolid, FlagSolid } from 'flowbite-svelte-icons';
 	import { onMount } from 'svelte';
-	import type { EmailMsg, ToggleEmailServiceMsg, RetryLevel, RetryLevelMsg } from '../lib/types';
+	import { slide } from 'svelte/transition';
+	import type { EmailMsg, ToggleEmailServiceMsg, RetryLevel, RetryLevelMsg, WorkflowCodeMsg, DeployMsg } from '../lib/types';
 	import logo from '$lib/images/Temporal_Symbol_dark_1_2x.png';
+	import Highlight, { LineNumbers } from 'svelte-highlight';
+	import typescript from 'svelte-highlight/languages/typescript';
+  import highlightStyles from "svelte-highlight/styles/a11y-light";
 
 	$: activeUrl = $page.url.pathname;
 
@@ -27,6 +31,8 @@
 		content?: string;
 	}
 
+	let workflowCode = "";
+	let highlightLines: number[] = [];
 	let events: CampaignEvent[] = [];
 	let email = "";
 
@@ -59,8 +65,18 @@
 		socket.emit('toggleRetryLevel', { level: target.value } as RetryLevelMsg);
 	}
 
+	const deploy = async () => {
+		console.log('Deploying');
+		socket.emit('deploy', { email } as DeployMsg);
+	}
+
 	onMount(() => {
 		socket = io();
+
+		socket.on('workflow:code', (msg: WorkflowCodeMsg) => {
+			workflowCode = msg.code;
+			highlightLines = [msg.line - 1];
+		});
 
 		socket.on('email:completed', (msg: EmailMsg) => {
 			console.log('Email completed', msg);
@@ -81,12 +97,14 @@
 			console.log('Campaign complete');
 			active = false;
 			events = [...events, { time: new Date().toTimeString(), type: 'campaign', status: "completed", subject: 'Campaign Completed' }];
+			highlightLines = [];
 		})
 
 		socket.on('campaign:failed', () => {
 			console.log('Campaign failed');
 			active = false;
 			events = [...events, { time: new Date().toTimeString(), type: 'campaign', status: "failed", subject: 'Campaign Failed' }];
+			highlightLines = [];
 		})
 
 		socket.on('emailServiceStatus', (status: boolean) => {
@@ -105,6 +123,7 @@
 <svelte:head>
 	<title>Home</title>
 	<meta name="description" content="Marketing Campaign Demo" />
+	{@html highlightStyles}
 </svelte:head>
 
 <div class="relative px-8">
@@ -115,22 +134,27 @@
 		</NavBrand>
 		<NavHamburger />
 		<NavUl {activeUrl} class="mr-4">
-			<NavLi href="/" on:click={reset}>Home</NavLi>
+			<NavLi href="/" on:click={reset}>Reset</NavLi>
 			<NavLi href="http://localhost:8233/">Temporal UI</NavLi>
 			<NavLi class="cursor-pointer">
 				Settings<ChevronDownOutline class="w-6 h-6 ms-2 text-primary-800 dark:text-white inline" />
 			</NavLi>
 			<Dropdown placement="bottom-end">
-				<li>
-					<Toggle class="py-2 px-4" bind:checked={emailService} on:change={toggleEmailService}>Email Service</Toggle>
+				<li class="py-2 px-4">
+					<Toggle bind:checked={emailService} on:change={toggleEmailService}>Email Service</Toggle>
 				</li>
 				<DropdownDivider />
-				<li>
-					<fieldset class="py-2 px-4">
-						<legend class="text-sm font-medium text-gray-900 dark:text-white">Retry Level</legend>
-						<Radio class="py-2 px-4" name="durability" value="none" bind:group={retryLevel} on:change={toggleRetryLevel}>None</Radio>
-						<Radio class="py-2 px-4" name="durability" value="workflow" bind:group={retryLevel} on:change={toggleRetryLevel}>Workflow</Radio>
-						<Radio class="py-2 px-4" name="durability" value="temporal" bind:group={retryLevel} on:change={toggleRetryLevel}>Temporal</Radio>
+				<li class="py-2 px-4">
+					<Button color="blue" on:click={deploy}>Deploy</Button>
+				</li>
+				<DropdownDivider />
+				<li class="py-2 px-4">
+					<fieldset>
+						<legend class="text-sm font-medium text-gray-900 dark:text-white">Resilience</legend>
+						<Radio name="durability" value="none" bind:group={retryLevel} on:change={toggleRetryLevel}>None</Radio>
+						<Radio name="durability" value="workflow" bind:group={retryLevel} on:change={toggleRetryLevel}>Workflow</Radio>
+						<Radio name="durability" value="activity" bind:group={retryLevel} on:change={toggleRetryLevel}>Activity</Radio>
+						<Radio name="durability" value="temporal" bind:group={retryLevel} on:change={toggleRetryLevel}>Temporal</Radio>
 					</fieldset>
 				</li>
 			</Dropdown>
@@ -138,88 +162,79 @@
 	</Navbar>
 
 	<div class="mt-20">
-		<section class="bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
-			<div class="py-6 px-4 mx-auto max-w-screen-xl lg:py-12 lg:px-6">
-					<div class="mx-auto max-w-screen-md sm:text-center">
-							<h2 class="mb-4 text-3xl tracking-tight font-extrabold text-gray-900 sm:text-4xl dark:text-white">Sign up for our newsletter</h2>
-							<p class="mx-auto mb-8 max-w-2xl font-light text-gray-500 md:mb-12 sm:text-xl dark:text-gray-400">Stay up to date with the roadmap progress, announcements and exclusive discounts feel free to sign up with your email.</p>
-							{#if submitted}
-								<Alert color="green">
-									<span class="font-medium">Thanks for signing up!</span>
-									We'll be in touch shortly!
-								</Alert>
-							{:else}
+		{#if !submitted}
+			<section transition:slide class="bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+				<div class="py-6 px-4 mx-auto max-w-screen-xl lg:py-12 lg:px-6">
+						<div class="mx-auto max-w-screen-md sm:text-center">
+								<h2 class="mb-4 text-3xl tracking-tight font-extrabold text-gray-900 sm:text-4xl dark:text-white">Sign up for our newsletter</h2>
+								<p class="mx-auto mb-8 max-w-2xl font-light text-gray-500 md:mb-12 sm:text-xl dark:text-gray-400">Stay up to date with the roadmap progress, announcements and exclusive discounts by signing up to our newsletter.</p>
 								<form action="#">
 									<div class="items-center mx-auto mb-3 space-y-4 max-w-screen-sm sm:flex sm:space-y-0">
-											<div class="relative w-full">
-													<label for="email" class="hidden mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Email address</label>
-													<div class="flex absolute inset-y-0 left-0 items-center pl-3 pointer-events-none">
-															<svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path></svg>
-													</div>
-													<input class="block p-3 pl-10 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 sm:rounded-none sm:rounded-l-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter your email" type="email" bind:value={email} required>
-											</div>
-											<div>
-													<button type="submit" class="py-3 px-5 w-full text-sm font-medium text-center text-white rounded-lg border cursor-pointer bg-primary-700 border-primary-600 sm:rounded-none sm:rounded-r-lg hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800" on:click={register}>Subscribe</button>
-											</div>
+										<div class="relative w-full">
+												<label for="email" class="hidden mb-2 text-sm font-medium text-gray-900 dark:text-gray-300">Email address</label>
+												<div class="flex absolute inset-y-0 left-0 items-center pl-3 pointer-events-none">
+														<svg class="w-5 h-5 text-gray-500 dark:text-gray-400" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path><path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path></svg>
+												</div>
+												<input class="block p-3 pl-10 w-full text-sm text-gray-900 bg-gray-50 rounded-lg border border-gray-300 sm:rounded-none sm:rounded-l-lg focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-primary-500 dark:focus:border-primary-500" placeholder="Enter your email" type="email" bind:value={email} required>
+										</div>
+										<div>
+												<button type="submit" class="py-3 px-5 w-full text-sm font-medium text-center text-white rounded-lg border cursor-pointer bg-primary-700 border-primary-600 sm:rounded-none sm:rounded-r-lg hover:bg-primary-800 focus:ring-4 focus:ring-primary-300 dark:bg-primary-600 dark:hover:bg-primary-700 dark:focus:ring-primary-800" on:click={register}>Subscribe</button>
+										</div>
 									</div>
 									<div class="mx-auto max-w-screen-sm text-sm text-left text-gray-500 newsletter-form-footer dark:text-gray-300">We care about the protection of your data. <a href="/" class="font-medium text-primary-600 dark:text-primary-500 hover:underline">Read our Privacy Policy</a>.</div>
-								</form>
-							{/if}
-					</div>
-			</div>
-		</section>
+							</form>
+						</div>
+				</div>
+			</section>
+		{/if}
 
 		{#if submitted}
-			<section class="bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
-				<Timeline order="vertical" class="w-full">
-					{#each events as event}
-						<TimelineItem title={event.subject} date={event.time}>
-							<svelte:fragment slot="icon">
-								{#if event.type === "email"}
-									{#if event.status == "completed"}
-										<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-primary-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-primary-900">
-											<EnvelopeOpenSolid class="w-4 h-4 text-primary-600 dark:text-primary-400" />
-										</span>
-									{:else}
-										<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900">
-											<EnvelopeSolid class="w-4 h-4 text-red-600 dark:text-red-400" />
-										</span>
+			<div class="grid grid-cols-3 gap-4">
+				<section class="bg-white p-6 mt-4 dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+					<Timeline order="vertical" class="w-full">
+						{#each events as event}
+							<TimelineItem title={event.subject} date={event.time}>
+								<svelte:fragment slot="icon">
+									{#if event.type === "email"}
+										{#if event.status == "completed"}
+											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-primary-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-primary-900">
+												<EnvelopeOpenSolid class="w-4 h-4 text-primary-600 dark:text-primary-400" />
+											</span>
+										{:else}
+											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900">
+												<EnvelopeSolid class="w-4 h-4 text-red-600 dark:text-red-400" />
+											</span>
+										{/if}
+									{:else if event.type === "campaign"}
+										{#if event.status == "started"}
+											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
+												<UserCircleSolid class="w-4 h-4 text-green-600 dark:text-green-400" />
+											</span>
+										{:else if event.status == "completed"}
+											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
+												<FlagSolid class="w-4 h-4 text-green-600 dark:text-green-400" />
+											</span>
+										{:else}
+											<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900">
+												<ExclamationCircleSolid class="w-4 h-4 text-red-600 dark:text-red-400" />
+											</span>
+										{/if}
 									{/if}
-								{:else if event.type === "campaign"}
-									{#if event.status == "started"}
-										<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
-											<UserCircleSolid class="w-4 h-4 text-green-600 dark:text-green-400" />
-										</span>
-									{:else if event.status == "completed"}
-										<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-green-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-green-900">
-											<FlagSolid class="w-4 h-4 text-green-600 dark:text-green-400" />
-										</span>
-									{:else}
-										<span class="flex absolute -start-3 justify-center items-center w-6 h-6 bg-red-200 rounded-full ring-8 ring-white dark:ring-gray-900 dark:bg-red-900">
-											<ExclamationCircleSolid class="w-4 h-4 text-red-600 dark:text-red-400" />
-										</span>
-									{/if}
+								</svelte:fragment>
+								{#if event.content}
+									<p>{event.content}</p>
 								{/if}
-							</svelte:fragment>
-							{#if event.content}
-								<p>{event.content}</p>
-							{/if}
-						</TimelineItem>
-					{/each}
-				</Timeline>
-				{#if active}<Spinner />{/if}
-			</section>
+							</TimelineItem>
+						{/each}
+					</Timeline>
+					{#if active}<Spinner />{/if}
+				</section>
+				<section class="col-span-2 p-6 pt-0 mt-4 text-sm bg-white dark:bg-gray-900 border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+					<Highlight language={typescript} code={workflowCode} let:highlighted>
+						<LineNumbers {highlighted} highlightedLines={highlightLines} wrapLines />
+					</Highlight>	
+				</section>
+			</div>
 		{/if}
 	</div>
 </div>
-
-<style>
-	section {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		align-items: center;
-		padding: 20px;
-		margin-top: 20px;
-	}
-</style>

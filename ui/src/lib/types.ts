@@ -21,5 +21,14 @@ export type RetryLevelMsg = {
 
 export type NewsletterInput = {
   email: string;
-  skipRetry?: boolean;
+}
+
+export type WorkflowCodeMsg = {
+  name: string;
+  code: string;
+  line: number;
+}
+
+export type DeployMsg = {
+  email: string;
 }
